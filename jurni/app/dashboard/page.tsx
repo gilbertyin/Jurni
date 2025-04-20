@@ -6,6 +6,9 @@ import { useRouter } from 'next/navigation'
 
 export default function DashboardPage() {
   const [user, setUser] = useState<any>(null)
+  const [url, setUrl] = useState('')
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const router = useRouter()
   const supabase = createClient()
 
@@ -25,6 +28,38 @@ export default function DashboardPage() {
   const handleSignOut = async () => {
     await supabase.auth.signOut()
     router.push('/login')
+  }
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setIsSubmitting(true)
+    setError(null)
+
+    try {
+      if (!user) throw new Error('User not authenticated')
+      
+      const response = await fetch('/api/videos', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          url,
+          userId: user.id,
+        }),
+      })
+
+      if (!response.ok) {
+        const data = await response.json()
+        throw new Error(data.error || 'Failed to submit video')
+      }
+
+      setUrl('') // Clear the input after successful submission
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to submit video')
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   if (!user) {
@@ -54,11 +89,34 @@ export default function DashboardPage() {
 
       <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
         <div className="px-4 py-6 sm:px-0">
-          <div className="border-4 border-dashed border-gray-200 rounded-lg h-96 p-4">
-            <h2 className="text-2xl font-semibold mb-4">Welcome to your Dashboard</h2>
-            <p className="text-gray-600">
-              You are now logged in as {user.email}
-            </p>
+          {/* URL Input Card */}
+          <div className="bg-white p-6 rounded-lg shadow-md">
+            <h2 className="text-xl font-semibold mb-4">Add New Video</h2>
+            <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+              <div className="flex gap-4">
+                <input
+                  type="url"
+                  value={url}
+                  onChange={(e) => setUrl(e.target.value)}
+                  placeholder="Enter video URL"
+                  className="flex-1 px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  required
+                  disabled={isSubmitting}
+                />
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                  disabled={isSubmitting}
+                >
+                  {isSubmitting ? 'Submitting...' : 'Submit'}
+                </button>
+              </div>
+              {error && (
+                <div className="text-red-500 text-sm mt-2">
+                  {error}
+                </div>
+              )}
+            </form>
           </div>
         </div>
       </main>

@@ -1,0 +1,7 @@
+# Video files
+*.mp4
+*.mov
+*.avi
+*.mkv
+*.webm
+temp/ 
