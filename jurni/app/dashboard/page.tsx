@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
+import MapView from '@/app/components/MapView'
 
 export default function DashboardPage() {
   const [user, setUser] = useState<any>(null)
@@ -88,7 +89,7 @@ export default function DashboardPage() {
       </nav>
 
       <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
-        <div className="px-4 py-6 sm:px-0">
+        <div className="px-4 py-6 sm:px-0 space-y-6">
           {/* URL Input Card */}
           <div className="bg-white p-6 rounded-lg shadow-md">
             <h2 className="text-xl font-semibold mb-4">Add New Video</h2>
@@ -117,6 +118,14 @@ export default function DashboardPage() {
                 </div>
               )}
             </form>
+          </div>
+
+          {/* Map Card */}
+          <div className="bg-white p-6 rounded-lg shadow-md">
+            <h2 className="text-xl font-semibold mb-4">Your Travel Map</h2>
+            <div className="w-full">
+              <MapView />
+            </div>
           </div>
         </div>
       </main>

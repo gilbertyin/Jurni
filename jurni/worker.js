@@ -7,6 +7,7 @@ import { exec } from 'child_process';
 import { promisify } from 'util';
 import fs from 'fs';
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import axios from 'axios';
 
 const execAsync = promisify(exec);
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -162,6 +163,7 @@ async function processWithGemini(videoPath, metadata) {
     Please provide a JSON response with the following structure:
     {
       "country_name": "The country name that the video is about based on title, descrption and video itself. Put 'unknown' if you can't determine the country.",
+      "city_name": "The city name that the video is about based on title, description and video itself. Put 'unknown' if you can't determine the city.",
       "summary": "A brief summary of the venue's pros, cons and pricing based on the video, title and description.",
       "venue_name": "The name of the venue based on the title, description and video itself. Put 'unknown' if you can't determine the venue name.",
     }
@@ -191,9 +193,47 @@ async function processWithGemini(videoPath, metadata) {
   }
 }
 
-async function updateVideoMetadata(videoId, metadata, geminiAnalysis) {
-  log(`[DEBUG] Updating video metadata for ${videoId}`);
+async function geocodeVenue(venueName, countryName, cityName) {
+  log(`[DEBUG] Geocoding venue: ${venueName} in ${cityName}, ${countryName}`);
   
+  if (venueName === 'unknown' || countryName === 'unknown' || cityName === 'unknown') {
+    log('[WARN] Cannot geocode unknown venue, city, or country');
+    return { latitude: null, longitude: null };
+  }
+
+  try {
+    const searchQuery = `${venueName}, ${cityName}, ${countryName}`;
+    const response = await axios.get('https://maps.googleapis.com/maps/api/geocode/json', {
+      params: {
+        address: searchQuery,
+        key: process.env.GOOGLE_MAPS_API_KEY
+      }
+    });
+
+    if (response.data.status === 'OK' && response.data.results.length > 0) {
+      const location = response.data.results[0].geometry.location;
+      log(`[DEBUG] Found coordinates: ${JSON.stringify(location)}`);
+      return {
+        latitude: location.lat,
+        longitude: location.lng
+      };
+    } else {
+      log(`[WARN] No results found for ${searchQuery}`);
+      return { latitude: null, longitude: null };
+    }
+  } catch (error) {
+    log(`[ERROR] Geocoding failed: ${error.message}`);
+    return { latitude: null, longitude: null };
+  }
+}
+
+async function updateVideoMetadata(videoId, metadata, geminiAnalysis) {
+  log(`[DEBUG] Updating video metadata, analysis and coordinates for ${videoId}`);
+  
+  // Geocode the venue
+  const coordinates = await geocodeVenue(geminiAnalysis.venue_name, geminiAnalysis.country_name, geminiAnalysis.city_name);
+  
+  // Update all metadata, Gemini analysis and coordinates
   const { data, error } = await supabase
     .from('videos')
     .update({
@@ -202,20 +242,22 @@ async function updateVideoMetadata(videoId, metadata, geminiAnalysis) {
       duration: metadata.duration,
       uploader: metadata.uploader,
       upload_date: metadata.upload_date,
-      view_count: metadata.view_count,
-      like_count: metadata.like_count,
-      comment_count: metadata.comment_count,
-      gemini_analysis: geminiAnalysis
+      venue_name: geminiAnalysis.venue_name,
+      country_name: geminiAnalysis.country_name,
+      city_name: geminiAnalysis.city_name,
+      gemini_analysis: geminiAnalysis,
+      latitude: coordinates.latitude,
+      longitude: coordinates.longitude
     })
     .eq('id', videoId)
     .select();
 
   if (error) {
-    log(`[ERROR] Failed to update video metadata: ${JSON.stringify(error)}`);
+    log(`[ERROR] Failed to update video metadata, analysis and coordinates: ${JSON.stringify(error)}`);
     throw error;
   }
 
-  log(`[DEBUG] Successfully updated video metadata`);
+  log(`[DEBUG] Successfully updated video metadata, analysis and coordinates`);
   return data;
 }
 
