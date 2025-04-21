@@ -1,8 +1,9 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { GoogleMap, LoadScript, Marker, InfoWindow } from '@react-google-maps/api';
 import { createClient } from '@/lib/supabase';
+import { FaHome } from 'react-icons/fa';
 
 // Verify environment variables
 if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
@@ -46,6 +47,15 @@ interface Waypoint {
   venue_name: string;
   city_name: string;
   country_name: string;
+  gemini_analysis: {
+    summary: string;
+    visual_analysis?: {
+      architecture_style?: string;
+      interior_design?: string;
+      crowd_density?: string;
+      notable_features?: string[];
+    };
+  };
 }
 
 export default function MapView() {
@@ -54,20 +64,146 @@ export default function MapView() {
   const [mapCenter, setMapCenter] = useState(defaultCenter);
   const [error, setError] = useState<string | null>(null);
   const [isLoaded, setIsLoaded] = useState(false);
+  const [map, setMap] = useState<google.maps.Map | null>(null);
+  const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
+  const [isUserLocationActive, setIsUserLocationActive] = useState(false);
+  const [locationError, setLocationError] = useState<string | null>(null);
+  const [isLocating, setIsLocating] = useState(false);
+  const [lastLocationTime, setLastLocationTime] = useState<number>(0);
+  const LOCATION_CACHE_TIME = 30000; // 30 seconds
+
+  const onMapLoad = useCallback((map: google.maps.Map) => {
+    setMap(map);
+  }, []);
+
+  const getUserLocation = useCallback(() => {
+    if (!navigator.geolocation) {
+      setError('Geolocation is not supported by your browser.');
+      return;
+    }
+
+    // Check if we have a recent cached location
+    const now = Date.now();
+    if (userLocation && (now - lastLocationTime) < LOCATION_CACHE_TIME) {
+      console.log('Using cached location');
+      if (map) {
+        map.setCenter(userLocation);
+        const bounds = new google.maps.LatLngBounds();
+        bounds.extend(userLocation);
+        waypoints.forEach(waypoint => {
+          bounds.extend({ lat: waypoint.latitude, lng: waypoint.longitude });
+        });
+        map.fitBounds(bounds, { top: 50, right: 50, bottom: 50, left: 50 });
+      }
+      return;
+    }
+
+    setIsLocating(true);
+    setLocationError(null);
+
+    const successCallback = (position: GeolocationPosition) => {
+      const location = {
+        lat: position.coords.latitude,
+        lng: position.coords.longitude
+      };
+      console.log('Got new location:', location);
+      setUserLocation(location);
+      setLastLocationTime(Date.now());
+      setIsUserLocationActive(true);
+      setIsLocating(false);
+      
+      if (map) {
+        map.setCenter(location);
+        const bounds = new google.maps.LatLngBounds();
+        bounds.extend(location);
+        waypoints.forEach(waypoint => {
+          bounds.extend({ lat: waypoint.latitude, lng: waypoint.longitude });
+        });
+        map.fitBounds(bounds, { top: 50, right: 50, bottom: 50, left: 50 });
+      }
+    };
+
+    const errorCallback = (error: GeolocationPositionError) => {
+      try {
+        console.log('Geolocation error details:', {
+          code: error.code,
+          message: error.message,
+          type: error.PERMISSION_DENIED === error.code ? 'PERMISSION_DENIED' :
+                error.POSITION_UNAVAILABLE === error.code ? 'POSITION_UNAVAILABLE' :
+                error.TIMEOUT === error.code ? 'TIMEOUT' : 'UNKNOWN'
+        });
+      } catch (e) {
+        // Silently handle any console logging errors
+      }
+      
+      setIsLocating(false);
+      
+      let errorMessage = 'Could not get your location. ';
+      
+      switch (error.code) {
+        case error.PERMISSION_DENIED:
+          errorMessage += 'Please enable location services in your browser settings.';
+          break;
+        case error.POSITION_UNAVAILABLE:
+          errorMessage += 'Location information is unavailable. Please check your device location settings.';
+          // Try again with lower accuracy and cached position
+          try {
+            navigator.geolocation.getCurrentPosition(
+              successCallback,
+              (retryError) => {
+                setLocationError(errorMessage);
+              },
+              {
+                enableHighAccuracy: false,
+                timeout: 10000,
+                maximumAge: 300000 // Accept cached position up to 5 minutes old
+              }
+            );
+          } catch (e) {
+            setLocationError(errorMessage);
+          }
+          return;
+        case error.TIMEOUT:
+          errorMessage += 'Location request timed out. Please try again.';
+          try {
+            setTimeout(() => {
+              getUserLocation();
+            }, 1000);
+          } catch (e) {
+            setLocationError(errorMessage);
+          }
+          break;
+        default:
+          errorMessage += 'Please try again.';
+      }
+      
+      setLocationError(errorMessage);
+    };
+
+    navigator.geolocation.getCurrentPosition(
+      successCallback,
+      errorCallback,
+      {
+        enableHighAccuracy: true,
+        timeout: 10000,
+        maximumAge: 300000 // Accept cached position up to 5 minutes old
+      }
+    );
+  }, [map, waypoints, userLocation, lastLocationTime]);
+
+  useEffect(() => {
+    if (waypoints.length > 0 && !isUserLocationActive) {
+      getUserLocation();
+    }
+  }, [waypoints, getUserLocation, isUserLocationActive]);
 
   useEffect(() => {
     async function fetchWaypoints() {
-      console.log('Fetching waypoints...');
-      console.log('Supabase URL:', process.env.NEXT_PUBLIC_SUPABASE_URL);
-      console.log('Supabase Anon Key:', process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY);
-      
       try {
         const { data, error, count } = await supabase
           .from('videos')
           .select('*')
           .order('created_at', { ascending: false });
-
-        console.log('Supabase response:', { data, error, count });
 
         if (error) {
           console.error('Supabase error:', error);
@@ -80,22 +216,16 @@ export default function MapView() {
           setError('No videos found in database');
           return;
         }
-
-        console.log('Total videos found:', data.length);
-        console.log('Sample video data:', data[0]);
         
         // Filter videos with valid coordinates
         const videosWithCoordinates = data.filter(video => 
           video.latitude !== null && 
           video.longitude !== null
         );
-
-        console.log('Videos with coordinates:', videosWithCoordinates.length);
         
         if (videosWithCoordinates.length > 0) {
           setWaypoints(videosWithCoordinates);
           const firstWaypoint = videosWithCoordinates[0];
-          console.log('Setting map center to:', firstWaypoint);
           setMapCenter({
             lat: firstWaypoint.latitude,
             lng: firstWaypoint.longitude
@@ -139,47 +269,121 @@ export default function MapView() {
       }}
     >
       {isLoaded && (
-        <GoogleMap
-          mapContainerStyle={containerStyle}
-          center={mapCenter}
-          zoom={3}
-          options={{
-            zoomControl: true,
-            streetViewControl: false,
-            mapTypeControl: false,
-            fullscreenControl: false,
-          }}
-        >
-          {waypoints.map((waypoint) => (
-            <Marker
-              key={waypoint.id}
-              position={{
-                lat: waypoint.latitude,
-                lng: waypoint.longitude
-              }}
-              onClick={() => setSelectedWaypoint(waypoint)}
-            />
-          ))}
+        <div className="relative">
+          <GoogleMap
+            mapContainerStyle={containerStyle}
+            center={mapCenter}
+            zoom={3}
+            onLoad={onMapLoad}
+            options={{
+              zoomControl: true,
+              streetViewControl: false,
+              mapTypeControl: false,
+              fullscreenControl: false,
+              styles: [
+                {
+                  featureType: "poi",
+                  elementType: "labels",
+                  stylers: [{ visibility: "off" }]
+                },
+                {
+                  featureType: "transit",
+                  elementType: "labels",
+                  stylers: [{ visibility: "off" }]
+                },
+                {
+                  featureType: "administrative",
+                  elementType: "labels",
+                  stylers: [{ visibility: "off" }]
+                },
+                {
+                  featureType: "landscape",
+                  elementType: "labels",
+                  stylers: [{ visibility: "off" }]
+                },
+                {
+                  featureType: "road",
+                  elementType: "labels.text.fill",
+                  stylers: [{ color: "#999999" }]
+                },
+                {
+                  featureType: "road",
+                  elementType: "labels.text.stroke",
+                  stylers: [{ visibility: "off" }]
+                }
+              ]
+            }}
+          >
+            {waypoints.map((waypoint) => (
+              <Marker
+                key={waypoint.id}
+                position={{
+                  lat: waypoint.latitude,
+                  lng: waypoint.longitude
+                }}
+                onClick={() => setSelectedWaypoint(waypoint)}
+                label={{
+                  text: waypoint.venue_name,
+                  className: "font-bold text-sm",
+                  color: "#000000"
+                }}
+                icon={{
+                  path: google.maps.SymbolPath.CIRCLE,
+                  scale: 8,
+                  fillColor: "#4285F4",
+                  fillOpacity: 1,
+                  strokeColor: "#FFFFFF",
+                  strokeWeight: 2,
+                  labelOrigin: new google.maps.Point(0, -2)
+                }}
+              />
+            ))}
 
-          {selectedWaypoint && (
-            <InfoWindow
-              position={{
-                lat: selectedWaypoint.latitude,
-                lng: selectedWaypoint.longitude
-              }}
-              onCloseClick={() => setSelectedWaypoint(null)}
-            >
-              <div className="p-2">
-                <h3 className="font-bold">{selectedWaypoint.venue_name}</h3>
-                <p>{selectedWaypoint.title}</p>
-                <p className="text-sm text-gray-600">
-                  {selectedWaypoint.city_name}, {selectedWaypoint.country_name}
-                </p>
-                <p className="text-sm mt-2">{selectedWaypoint.description}</p>
-              </div>
-            </InfoWindow>
+            {userLocation && (
+              <Marker
+                position={userLocation}
+                icon={{
+                  url: 'https://maps.google.com/mapfiles/ms/icons/blue-dot.png'
+                }}
+              />
+            )}
+
+            {selectedWaypoint && (
+              <InfoWindow
+                position={{
+                  lat: selectedWaypoint.latitude,
+                  lng: selectedWaypoint.longitude
+                }}
+                onCloseClick={() => setSelectedWaypoint(null)}
+              >
+                <div className="p-2 max-w-xs">
+                  <h3 className="font-bold text-lg mb-2">{selectedWaypoint.venue_name}</h3>
+                  {selectedWaypoint.gemini_analysis?.summary && (
+                    <div className="text-sm text-gray-700">
+                      {selectedWaypoint.gemini_analysis.summary}
+                    </div>
+                  )}
+                  <div className="mt-2 text-xs text-gray-500">
+                    {selectedWaypoint.city_name}, {selectedWaypoint.country_name}
+                  </div>
+                </div>
+              </InfoWindow>
+            )}
+          </GoogleMap>
+          <button
+            onClick={getUserLocation}
+            className="absolute bottom-4 left-4 bg-white p-3 rounded-full shadow-lg hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors duration-200"
+            title="Go to my location"
+            disabled={isLocating}
+          >
+            <FaHome className={`text-blue-500 text-xl ${isLocating ? 'animate-pulse' : ''}`} />
+          </button>
+          {locationError && (
+            <div className="absolute top-4 right-4 bg-white p-3 rounded-lg shadow-lg text-red-500 text-sm">
+              {locationError}
+            </div>
           )}
-        </GoogleMap>
+        </div>
       )}
     </LoadScript>
   );

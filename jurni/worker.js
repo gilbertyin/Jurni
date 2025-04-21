@@ -146,33 +146,42 @@ async function extractMetadata(url) {
 async function processWithGemini(videoPath, metadata) {
   log(`[DEBUG] Processing video with Gemini AI`);
   
-  const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+  const model = genAI.getGenerativeModel({ model: "gemini-1.5-pro" });
   
-  // Prepare the prompt with metadata
+  // Read the video file
+  const videoData = fs.readFileSync(videoPath);
+  
+  // Create a prompt that includes both metadata and video analysis
   const prompt = `
-    Analyze this video based on its metadata:
+    Analyze this video and its metadata to extract location and venue information.
+    
+    Video Metadata:
     Title: ${metadata.title}
     Description: ${metadata.description}
-    Duration: ${metadata.duration} seconds
-    Uploader: ${metadata.uploader}
-    Upload Date: ${metadata.upload_date}
-    Views: ${metadata.view_count}
-    Likes: ${metadata.like_count}
-    Comments: ${metadata.comment_count}
     
-    Please provide a JSON response with the following structure:
+    Please watch the video and use the metedata to provide a JSON response with the following structure:
     {
-      "country_name": "The country name that the video is about based on title, descrption and video itself. Put 'unknown' if you can't determine the country.",
-      "city_name": "The city name that the video is about based on title, description and video itself. Put 'unknown' if you can't determine the city.",
-      "summary": "A brief summary of the venue's pros, cons and pricing based on the video, title and description.",
-      "venue_name": "The name of the venue based on the title, description and video itself. Put 'unknown' if you can't determine the venue name.",
+      "country_name": "The country name that the video is about based on visual content, title, and description. Put 'unknown' if you can't determine the country.",
+      "city_name": "The city name that the video is about based on visual content, title, and description. Put 'unknown' if you can't determine the city.",
+      "summary": "A short summary of the venue based on visual content, title, and description that discusseses the price, pros and cons and other important details",
+      "venue_name": "The name of the venue based on visual content, title, and description. Put 'unknown' if you can't determine the venue name.",
     }
     
     IMPORTANT: Return ONLY the JSON object, without any markdown formatting or additional text.
   `;
   
   try {
-    const result = await model.generateContent(prompt);
+    // Create a multimodal prompt with both text and video
+    const result = await model.generateContent([
+      prompt,
+      {
+        inlineData: {
+          mimeType: "video/mp4",
+          data: videoData.toString('base64')
+        }
+      }
+    ]);
+    
     const response = await result.response;
     const text = response.text();
     

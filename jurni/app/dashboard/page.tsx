@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
 import MapView from '@/app/components/MapView'
+import VenuesList from '@/app/components/VenuesList'
 
 export default function DashboardPage() {
   const [user, setUser] = useState<any>(null)
@@ -100,32 +101,31 @@ export default function DashboardPage() {
                   value={url}
                   onChange={(e) => setUrl(e.target.value)}
                   placeholder="Enter video URL"
-                  className="flex-1 px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="flex-1 px-4 py-2 rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
                   required
-                  disabled={isSubmitting}
                 />
                 <button
                   type="submit"
-                  className="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed"
                   disabled={isSubmitting}
+                  className="inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50"
                 >
                   {isSubmitting ? 'Submitting...' : 'Submit'}
                 </button>
               </div>
-              {error && (
-                <div className="text-red-500 text-sm mt-2">
-                  {error}
-                </div>
-              )}
+              {error && <p className="text-red-500 text-sm">{error}</p>}
             </form>
           </div>
 
-          {/* Map Card */}
+          {/* Map View */}
           <div className="bg-white p-6 rounded-lg shadow-md">
-            <h2 className="text-xl font-semibold mb-4">Your Travel Map</h2>
-            <div className="w-full">
-              <MapView />
-            </div>
+            <h2 className="text-xl font-semibold mb-4">Map View</h2>
+            <MapView />
+          </div>
+
+          {/* Venues List */}
+          <div className="bg-white p-6 rounded-lg shadow-md">
+            <h2 className="text-xl font-semibold mb-4">Venues</h2>
+            <VenuesList />
           </div>
         </div>
       </main>
