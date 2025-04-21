@@ -249,6 +249,44 @@ export default function MapView() {
     }
 
     fetchWaypoints();
+
+    // Subscribe to real-time changes
+    const channel = supabase
+      .channel('videos_changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'videos'
+        },
+        (payload) => {
+          console.log('Received real-time update:', payload);
+          if (payload.eventType === 'DELETE') {
+            setWaypoints(prevWaypoints => 
+              prevWaypoints.filter(waypoint => waypoint.id !== payload.old.id)
+            );
+          } else if (payload.eventType === 'INSERT') {
+            const newVideo = payload.new as Waypoint;
+            if (newVideo.latitude && newVideo.longitude) {
+              setWaypoints(prevWaypoints => [newVideo, ...prevWaypoints]);
+            }
+          } else if (payload.eventType === 'UPDATE') {
+            const updatedVideo = payload.new as Waypoint;
+            setWaypoints(prevWaypoints => 
+              prevWaypoints.map(waypoint => 
+                waypoint.id === updatedVideo.id ? updatedVideo : waypoint
+              )
+            );
+          }
+        }
+      )
+      .subscribe();
+
+    // Cleanup subscription on unmount
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, []);
 
   if (error) {
