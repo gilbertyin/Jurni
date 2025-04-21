@@ -437,141 +437,122 @@ export default function MapView({ selectedVenue }: MapViewProps) {
     );
   }
 
-  if (!process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY) {
-    return (
-      <div className="bg-white p-4 rounded-lg shadow-md">
-        <div className="text-red-500">Google Maps API key is not configured</div>
-      </div>
-    );
-  }
-
   return (
-    <LoadScript 
-      googleMapsApiKey={process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY}
-      onLoad={() => setIsLoaded(true)}
-      onError={(err) => {
-        console.error('Google Maps failed to load:', err);
-        setError('Failed to load Google Maps');
-      }}
-    >
-      {isLoaded && (
-        <div className="relative">
-          <GoogleMap
-            mapContainerStyle={containerStyle}
-            center={mapCenter}
-            zoom={zoomLevel}
-            onLoad={onMapLoad}
-            options={{
-              zoomControl: true,
-              streetViewControl: false,
-              mapTypeControl: false,
-              fullscreenControl: true,
-              styles: [
-                {
-                  featureType: "poi",
-                  elementType: "labels",
-                  stylers: [{ visibility: "off" }]
-                },
-                {
-                  featureType: "transit",
-                  elementType: "labels",
-                  stylers: [{ visibility: "off" }]
-                },
-                {
-                  featureType: "administrative",
-                  elementType: "labels",
-                  stylers: [{ visibility: "off" }]
-                },
-                {
-                  featureType: "landscape",
-                  elementType: "labels",
-                  stylers: [{ visibility: "off" }]
-                },
-                {
-                  featureType: "road",
-                  elementType: "labels.text.fill",
-                  stylers: [{ color: "#999999" }]
-                },
-                {
-                  featureType: "road",
-                  elementType: "labels.text.stroke",
-                  stylers: [{ visibility: "off" }]
-                }
-              ]
+    <div className="relative">
+      <GoogleMap
+        mapContainerStyle={containerStyle}
+        center={mapCenter}
+        zoom={zoomLevel}
+        onLoad={onMapLoad}
+        options={{
+          zoomControl: true,
+          streetViewControl: false,
+          mapTypeControl: false,
+          fullscreenControl: true,
+          styles: [
+            {
+              featureType: "poi",
+              elementType: "labels",
+              stylers: [{ visibility: "off" }]
+            },
+            {
+              featureType: "transit",
+              elementType: "labels",
+              stylers: [{ visibility: "off" }]
+            },
+            {
+              featureType: "administrative",
+              elementType: "labels",
+              stylers: [{ visibility: "off" }]
+            },
+            {
+              featureType: "landscape",
+              elementType: "labels",
+              stylers: [{ visibility: "off" }]
+            },
+            {
+              featureType: "road",
+              elementType: "labels.text.fill",
+              stylers: [{ color: "#999999" }]
+            },
+            {
+              featureType: "road",
+              elementType: "labels.text.stroke",
+              stylers: [{ visibility: "off" }]
+            }
+          ]
+        }}
+      >
+        {userLocation && <PulsingMarker position={userLocation} />}
+        {waypoints.map((waypoint) => (
+          <Marker
+            key={waypoint.id}
+            position={{ lat: waypoint.latitude, lng: waypoint.longitude }}
+            onClick={() => setSelectedWaypoint(waypoint)}
+            label={(zoomLevel >= MIN_ZOOM_FOR_LABELS || selectedVenue?.id === waypoint.id) ? {
+              text: waypoint.venue_name,
+              className: 'venue-label',
+              color: '#000000',
+              fontSize: '14px',
+              fontWeight: 'bold',
+            } : undefined}
+            icon={{
+              url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(`
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z" fill="#4285F4"/>
+                </svg>
+              `),
+              scaledSize: new google.maps.Size(24, 24),
+              anchor: new google.maps.Point(12, 12),
+              labelOrigin: new google.maps.Point(12, 30)
             }}
+          />
+        ))}
+
+        {selectedWaypoint && (
+          <InfoWindow
+            position={{
+              lat: selectedWaypoint.latitude,
+              lng: selectedWaypoint.longitude
+            }}
+            onCloseClick={() => setSelectedWaypoint(null)}
           >
-            {userLocation && <PulsingMarker position={userLocation} />}
-            {waypoints.map((waypoint) => (
-              <Marker
-                key={waypoint.id}
-                position={{ lat: waypoint.latitude, lng: waypoint.longitude }}
-                onClick={() => setSelectedWaypoint(waypoint)}
-                label={(zoomLevel >= MIN_ZOOM_FOR_LABELS || selectedVenue?.id === waypoint.id) ? {
-                  text: waypoint.venue_name,
-                  className: 'venue-label',
-                  color: '#000000',
-                  fontSize: '14px',
-                  fontWeight: 'bold',
-                } : undefined}
-                icon={{
-                  url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(`
-                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                      <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z" fill="#4285F4"/>
-                    </svg>
-                  `),
-                  scaledSize: new google.maps.Size(24, 24),
-                  anchor: new google.maps.Point(12, 12),
-                  labelOrigin: new google.maps.Point(12, 30)
-                }}
-              />
-            ))}
-
-            {selectedWaypoint && (
-              <InfoWindow
-                position={{
-                  lat: selectedWaypoint.latitude,
-                  lng: selectedWaypoint.longitude
-                }}
-                onCloseClick={() => setSelectedWaypoint(null)}
-              >
-                <div className="p-2 max-w-xs">
-                  <h3 className="font-bold text-lg mb-2">{selectedWaypoint.venue_name}</h3>
-                  {selectedWaypoint.gemini_analysis?.summary && (
-                    <div className="text-sm text-gray-700">
-                      {selectedWaypoint.gemini_analysis.summary}
-                    </div>
-                  )}
-                  <div className="mt-2 text-xs text-gray-500">
-                    {selectedWaypoint.city_name}, {selectedWaypoint.country_name}
-                  </div>
-
-                  <a
-                    href={`https://www.google.com/maps/dir/?api=1&destination=${selectedWaypoint.latitude},${selectedWaypoint.longitude}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="mt-3 inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-                  >
-                    Get Directions
-                  </a>
+            <div className="p-2 max-w-xs">
+              <h3 className="font-bold text-lg mb-2">{selectedWaypoint.venue_name}</h3>
+              {selectedWaypoint.gemini_analysis?.summary && (
+                <div className="text-sm text-gray-700">
+                  {selectedWaypoint.gemini_analysis.summary}
                 </div>
-              </InfoWindow>
-            )}
-          </GoogleMap>
-          <button
-            onClick={getUserLocation}
-            className="absolute bottom-4 left-4 bg-white p-3 rounded-full shadow-lg hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors duration-200"
-            title="Go to my location"
-            disabled={isLocating}
-          >
-            <FaHome className={`text-blue-500 text-xl ${isLocating ? 'animate-pulse' : ''}`} />
-          </button>
-          {locationError && (
-            <div className="absolute top-4 right-4 bg-white p-3 rounded-lg shadow-lg text-red-500 text-sm">
-              {locationError}
+              )}
+              <div className="mt-2 text-xs text-gray-500">
+                {selectedWaypoint.city_name}, {selectedWaypoint.country_name}
+              </div>
+
+              <a
+                href={`https://www.google.com/maps/dir/?api=1&destination=${selectedWaypoint.latitude},${selectedWaypoint.longitude}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-3 inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+              >
+                Get Directions
+              </a>
             </div>
-          )}
+          </InfoWindow>
+        )}
+      </GoogleMap>
+      <button
+        onClick={getUserLocation}
+        className="absolute bottom-4 left-4 bg-white p-3 rounded-full shadow-lg hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors duration-200"
+        title="Go to my location"
+        disabled={isLocating}
+      >
+        <FaHome className={`text-blue-500 text-xl ${isLocating ? 'animate-pulse' : ''}`} />
+      </button>
+      {locationError && (
+        <div className="absolute top-4 right-4 bg-white p-3 rounded-lg shadow-lg text-red-500 text-sm">
+          {locationError}
         </div>
       )}
-    </LoadScript>
+    </div>
   );
 } 
