@@ -187,6 +187,10 @@ export default function MapView({ selectedVenue }: MapViewProps) {
     map.addListener('zoom_changed', () => {
       setZoomLevel(map.getZoom() || 0);
     });
+    // Add click listener to close info window
+    map.addListener('click', () => {
+      setSelectedWaypoint(null);
+    });
     // Set initial zoom level
     setZoomLevel(map.getZoom() || 0);
   }, []);
