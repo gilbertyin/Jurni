@@ -228,7 +228,7 @@ async function processWithGemini(videoPath, metadata) {
       {
         "country_name": "The country name that the video is about based on visual content, title, and description. Put 'unknown' if you can't determine the country.",
         "city_name": "The city name that the video is about based on visual content, title, and description. Put 'unknown' if you can't determine the city.",
-        "summary": "A short summary of the venue based on visual content, title, and description that discusseses the price, pros and cons and other important details",
+        "summary": "A short summary of the venue based on visual content, title, and description that discusseses the price, pros and cons and other important details. Make it a few sentences long and dont split into further json objects just have it be one paragraph.",
         "venue_name": "The name of the venue based on visual content, title, and description. Put 'unknown' if you can't determine the venue name.",
       }
       

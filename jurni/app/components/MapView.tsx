@@ -124,7 +124,7 @@ export default function MapView() {
   const [lastLocationTime, setLastLocationTime] = useState<number>(0);
   const [zoomLevel, setZoomLevel] = useState<number>(0);
   const LOCATION_CACHE_TIME = 30000; // 30 seconds
-  const MIN_ZOOM_FOR_LABELS = 10; // Minimum zoom level to show labels
+  const MIN_ZOOM_FOR_LABELS = 15; // Minimum zoom level to show labels
 
   const onMapLoad = useCallback((map: google.maps.Map) => {
     setMap(map);
@@ -456,6 +456,15 @@ export default function MapView() {
                   <div className="mt-2 text-xs text-gray-500">
                     {selectedWaypoint.city_name}, {selectedWaypoint.country_name}
                   </div>
+
+                  <a
+                    href={`https://www.google.com/maps/dir/?api=1&destination=${selectedWaypoint.latitude},${selectedWaypoint.longitude}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="mt-3 inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                  >
+                    Get Directions
+                  </a>
                 </div>
               </InfoWindow>
             )}
