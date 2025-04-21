@@ -114,6 +114,57 @@ const PulsingMarker = ({ position }: { position: google.maps.LatLngLiteral }) =>
   );
 };
 
+// Custom VenueMarker component
+const VenueMarker = ({ 
+  position, 
+  isSelected, 
+  onClick, 
+  venueName, 
+  showLabel 
+}: { 
+  position: google.maps.LatLngLiteral;
+  isSelected: boolean;
+  onClick: () => void;
+  venueName: string;
+  showLabel: boolean;
+}) => {
+  return (
+    <OverlayView
+      position={position}
+      mapPaneName={OverlayView.OVERLAY_MOUSE_TARGET}
+      getPixelPositionOffset={(width, height) => ({
+        x: -(width / 2),
+        y: -(height / 2),
+      })}
+    >
+      <div 
+        className={`venue-marker ${isSelected ? 'selected' : ''}`}
+        onClick={onClick}
+        style={{ cursor: 'pointer' }}
+      >
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z" fill="#4285F4"/>
+        </svg>
+        {(showLabel || isSelected) && (
+          <div className="venue-label" style={{
+            position: 'absolute',
+            top: '30px',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            color: '#000000',
+            fontSize: '14px',
+            fontWeight: 'bold',
+            whiteSpace: 'nowrap',
+            textShadow: '0 0 2px white, 0 0 2px white, 0 0 2px white, 0 0 2px white'
+          }}>
+            {venueName}
+          </div>
+        )}
+      </div>
+    </OverlayView>
+  );
+};
+
 export default function MapView({ selectedVenue }: MapViewProps) {
   const [waypoints, setWaypoints] = useState<Waypoint[]>([]);
   const [selectedWaypoint, setSelectedWaypoint] = useState<Waypoint | null>(null);
@@ -451,7 +502,7 @@ export default function MapView({ selectedVenue }: MapViewProps) {
                 key={waypoint.id}
                 position={{ lat: waypoint.latitude, lng: waypoint.longitude }}
                 onClick={() => setSelectedWaypoint(waypoint)}
-                label={zoomLevel >= MIN_ZOOM_FOR_LABELS ? {
+                label={(zoomLevel >= MIN_ZOOM_FOR_LABELS || selectedVenue?.id === waypoint.id) ? {
                   text: waypoint.venue_name,
                   className: 'venue-label',
                   color: '#000000',
