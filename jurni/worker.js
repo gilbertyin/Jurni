@@ -1,4 +1,4 @@
-import { Worker } from 'bullmq';
+import { Worker, Queue } from 'bullmq';
 import { createClient } from '@supabase/supabase-js';
 import dotenv from 'dotenv';
 import path from 'path';
@@ -49,46 +49,113 @@ if (!fs.existsSync(tempDir)) {
   fs.mkdirSync(tempDir);
 }
 
-async function downloadVideo(url, outputPath) {
-  const isTikTok = url.includes('tiktok.com');
-  const ytdlpOptions = [
-    '-f "best[ext=mp4]"',
-    '--no-warnings',
-    '--no-check-certificates',
-    isTikTok ? '--cookies-from-browser chrome' : '', // Use browser cookies for TikTok
-    isTikTok ? '--force-keyframes-at-cuts' : '', // Help with TikTok video processing
-    `--output "${outputPath}"`,
-  ].filter(Boolean).join(' ');
-
-  console.log(`Running yt-dlp with options: ${ytdlpOptions}`);
-  const command = `yt-dlp ${ytdlpOptions} "${url}"`;
-  
-  try {
-    const { stdout, stderr } = await execAsync(command);
-    console.log('Download stdout:', stdout);
-    if (stderr) console.error('Download stderr:', stderr);
-    
-    if (!fs.existsSync(outputPath)) {
-      throw new Error('Video file was not created after download');
-    }
-    
-    return true;
-  } catch (error) {
-    console.error('Download error:', error);
-    // Try alternative method for TikTok
-    if (isTikTok) {
-      console.log('Trying alternative method for TikTok...');
-      try {
-        const altCommand = `yt-dlp --no-warnings --force-generic-extractor "${url}" -o "${outputPath}"`;
-        await execAsync(altCommand);
-        return true;
-      } catch (altError) {
-        console.error('Alternative download method failed:', altError);
-        throw altError;
-      }
-    }
-    throw error;
+// Rate limiting configuration
+const RATE_LIMITS = {
+  ytDlp: {
+    maxRequests: 5,
+    timeWindow: 60 * 1000, // 1 minute
+  },
+  gemini: {
+    maxRequests: 60,
+    timeWindow: 60 * 1000, // 1 minute
+  },
+  googleMaps: {
+    maxRequests: 50,
+    timeWindow: 60 * 1000, // 1 minute
   }
+};
+
+// Retry configuration
+const RETRY_CONFIG = {
+  attempts: 3,
+  backoff: {
+    type: 'exponential',
+    delay: 1000, // Start with 1 second
+  }
+};
+
+// Create separate queues for each rate-limited operation
+const ytDlpQueue = new Queue('yt-dlp-downloads', {
+  connection: redisConnection,
+  defaultJobOptions: {
+    attempts: RETRY_CONFIG.attempts,
+    backoff: RETRY_CONFIG.backoff,
+  }
+});
+
+const geminiQueue = new Queue('gemini-analysis', {
+  connection: redisConnection,
+  defaultJobOptions: {
+    attempts: RETRY_CONFIG.attempts,
+    backoff: RETRY_CONFIG.backoff,
+  }
+});
+
+const googleMapsQueue = new Queue('google-maps-geocoding', {
+  connection: redisConnection,
+  defaultJobOptions: {
+    attempts: RETRY_CONFIG.attempts,
+    backoff: RETRY_CONFIG.backoff,
+  }
+});
+
+// Rate limiting middleware
+async function withRateLimit(queue, operation, fn) {
+  const now = Date.now();
+  const jobs = await queue.getJobs(['active', 'waiting', 'delayed']);
+  
+  // Count jobs in the time window
+  const recentJobs = jobs.filter(job => 
+    now - job.timestamp < RATE_LIMITS[operation].timeWindow
+  );
+  
+  if (recentJobs.length >= RATE_LIMITS[operation].maxRequests) {
+    // Calculate delay until next available slot
+    const oldestJob = recentJobs[0];
+    const delay = oldestJob.timestamp + RATE_LIMITS[operation].timeWindow - now;
+    
+    // Add to queue with delay
+    return queue.add(operation, { fn }, { delay });
+  }
+  
+  // Execute immediately if under rate limit
+  return fn();
+}
+
+// Modified download function with rate limiting
+async function downloadVideo(url, outputPath) {
+  return withRateLimit(ytDlpQueue, 'ytDlp', async () => {
+    const isTikTok = url.includes('tiktok.com');
+    const ytdlpOptions = [
+      '-f "best[ext=mp4]"',
+      '--no-warnings',
+      '--no-check-certificates',
+      isTikTok ? '--cookies-from-browser chrome' : '',
+      isTikTok ? '--force-keyframes-at-cuts' : '',
+      `--output "${outputPath}"`,
+    ].filter(Boolean).join(' ');
+
+    try {
+      const { stdout, stderr } = await execAsync(`yt-dlp ${ytdlpOptions} "${url}"`);
+      if (stderr) console.error('Download stderr:', stderr);
+      
+      if (!fs.existsSync(outputPath)) {
+        throw new Error('Video file was not created after download');
+      }
+      
+      return true;
+    } catch (error) {
+      if (isTikTok) {
+        try {
+          await execAsync(`yt-dlp --no-warnings --force-generic-extractor "${url}" -o "${outputPath}"`);
+          return true;
+        } catch (altError) {
+          throw altError;
+        }
+      }
+      throw error;
+    }
+  });
 }
 
 async function updateVideoStatus(videoId, status) {
@@ -143,97 +210,96 @@ async function extractMetadata(url) {
   }
 }
 
+// Modified Gemini processing with rate limiting
 async function processWithGemini(videoPath, metadata) {
-  log(`[DEBUG] Processing video with Gemini AI`);
-  
-  const model = genAI.getGenerativeModel({ model: "gemini-1.5-pro" });
-  
-  // Read the video file
-  const videoData = fs.readFileSync(videoPath);
-  
-  // Create a prompt that includes both metadata and video analysis
-  const prompt = `
-    Analyze this video and its metadata to extract location and venue information.
+  return withRateLimit(geminiQueue, 'gemini', async () => {
+    const model = genAI.getGenerativeModel({ model: "gemini-1.5-pro" });
+    const videoData = fs.readFileSync(videoPath);
     
-    Video Metadata:
-    Title: ${metadata.title}
-    Description: ${metadata.description}
-    
-    Please watch the video and use the metedata to provide a JSON response with the following structure:
-    {
-      "country_name": "The country name that the video is about based on visual content, title, and description. Put 'unknown' if you can't determine the country.",
-      "city_name": "The city name that the video is about based on visual content, title, and description. Put 'unknown' if you can't determine the city.",
-      "summary": "A short summary of the venue based on visual content, title, and description that discusseses the price, pros and cons and other important details",
-      "venue_name": "The name of the venue based on visual content, title, and description. Put 'unknown' if you can't determine the venue name.",
-    }
-    
-    IMPORTANT: Return ONLY the JSON object, without any markdown formatting or additional text.
-  `;
-  
-  try {
-    // Create a multimodal prompt with both text and video
-    const result = await model.generateContent([
-      prompt,
+    // Create a prompt that includes both metadata and video analysis
+    const prompt = `
+      Analyze this video and its metadata to extract location and venue information.
+      
+      Video Metadata:
+      Title: ${metadata.title}
+      Description: ${metadata.description}
+      
+      Please watch the video and use the metedata to provide a JSON response with the following structure:
       {
-        inlineData: {
-          mimeType: "video/mp4",
-          data: videoData.toString('base64')
-        }
+        "country_name": "The country name that the video is about based on visual content, title, and description. Put 'unknown' if you can't determine the country.",
+        "city_name": "The city name that the video is about based on visual content, title, and description. Put 'unknown' if you can't determine the city.",
+        "summary": "A short summary of the venue based on visual content, title, and description that discusseses the price, pros and cons and other important details",
+        "venue_name": "The name of the venue based on visual content, title, and description. Put 'unknown' if you can't determine the venue name.",
       }
-    ]);
+      
+      IMPORTANT: Return ONLY the JSON object, without any markdown formatting or additional text.
+    `;
     
-    const response = await result.response;
-    const text = response.text();
-    
-    log(`[DEBUG] Raw Gemini AI response: ${text}`);
-    
-    // Clean the response by removing markdown code blocks and any surrounding text
-    const cleanedText = text
-      .replace(/```json\n?/g, '')  // Remove ```json
-      .replace(/```\n?/g, '')      // Remove ```
-      .trim();                     // Remove any extra whitespace
-    
-    log(`[DEBUG] Cleaned response: ${cleanedText}`);
-    
-    return JSON.parse(cleanedText);
-  } catch (error) {
-    log(`[ERROR] Failed to process with Gemini AI: ${error}`);
-    throw error;
-  }
+    try {
+      // Create a multimodal prompt with both text and video
+      const result = await model.generateContent([
+        prompt,
+        {
+          inlineData: {
+            mimeType: "video/mp4",
+            data: videoData.toString('base64')
+          }
+        }
+      ]);
+      
+      const response = await result.response;
+      const text = response.text();
+      
+      log(`[DEBUG] Raw Gemini AI response: ${text}`);
+      
+      // Clean the response by removing markdown code blocks and any surrounding text
+      const cleanedText = text
+        .replace(/```json\n?/g, '')  // Remove ```json
+        .replace(/```\n?/g, '')      // Remove ```
+        .trim();                     // Remove any extra whitespace
+      
+      log(`[DEBUG] Cleaned response: ${cleanedText}`);
+      
+      return JSON.parse(cleanedText);
+    } catch (error) {
+      log(`[ERROR] Failed to process with Gemini AI: ${error}`);
+      throw error;
+    }
+  });
 }
 
+// Modified geocoding with rate limiting
 async function geocodeVenue(venueName, countryName, cityName) {
-  log(`[DEBUG] Geocoding venue: ${venueName} in ${cityName}, ${countryName}`);
-  
-  if (venueName === 'unknown' || countryName === 'unknown' || cityName === 'unknown') {
-    log('[WARN] Cannot geocode unknown venue, city, or country');
-    return { latitude: null, longitude: null };
-  }
-
-  try {
-    const searchQuery = `${venueName}, ${cityName}, ${countryName}`;
-    const response = await axios.get('https://maps.googleapis.com/maps/api/geocode/json', {
-      params: {
-        address: searchQuery,
-        key: process.env.GOOGLE_MAPS_API_KEY
-      }
-    });
-
-    if (response.data.status === 'OK' && response.data.results.length > 0) {
-      const location = response.data.results[0].geometry.location;
-      log(`[DEBUG] Found coordinates: ${JSON.stringify(location)}`);
-      return {
-        latitude: location.lat,
-        longitude: location.lng
-      };
-    } else {
-      log(`[WARN] No results found for ${searchQuery}`);
+  return withRateLimit(googleMapsQueue, 'googleMaps', async () => {
+    if (venueName === 'unknown' || countryName === 'unknown' || cityName === 'unknown') {
       return { latitude: null, longitude: null };
     }
-  } catch (error) {
-    log(`[ERROR] Geocoding failed: ${error.message}`);
-    return { latitude: null, longitude: null };
-  }
+
+    try {
+      const searchQuery = `${venueName}, ${cityName}, ${countryName}`;
+      const response = await axios.get('https://maps.googleapis.com/maps/api/geocode/json', {
+        params: {
+          address: searchQuery,
+          key: process.env.GOOGLE_MAPS_API_KEY
+        }
+      });
+
+      if (response.data.status === 'OK' && response.data.results.length > 0) {
+        const location = response.data.results[0].geometry.location;
+        return {
+          latitude: location.lat,
+          longitude: location.lng
+        };
+      }
+      return { latitude: null, longitude: null };
+    } catch (error) {
+      if (error.response?.status === 429) {
+        // Rate limit hit, will be retried by the queue
+        throw error;
+      }
+      return { latitude: null, longitude: null };
+    }
+  });
 }
 
 async function updateVideoMetadata(videoId, metadata, geminiAnalysis) {

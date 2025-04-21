@@ -9,6 +9,8 @@ interface Venue {
   venue_name: string
   city_name: string
   country_name: string
+  url: string
+  status: string
 }
 
 export default function VenuesList() {
@@ -22,7 +24,7 @@ export default function VenuesList() {
     try {
       const { data, error } = await supabase
         .from('videos')
-        .select('id, venue_name, city_name, country_name')
+        .select('id, venue_name, city_name, country_name, url, status')
         .order('created_at', { ascending: false })
 
       if (error) throw error
@@ -52,7 +54,6 @@ export default function VenuesList() {
       }
 
       console.log('Successfully deleted venue:', venueId)
-      // The real-time subscription will handle the UI update
     } catch (err) {
       console.error('Delete operation failed:', err)
       setError(err instanceof Error ? err.message : 'Failed to delete venue')
@@ -62,10 +63,8 @@ export default function VenuesList() {
   }
 
   useEffect(() => {
-    // Initial fetch
     fetchVenues()
 
-    // Set up real-time subscription
     const channel = supabase
       .channel('venues_changes')
       .on(
@@ -82,7 +81,6 @@ export default function VenuesList() {
       )
       .subscribe()
 
-    // Cleanup subscription
     return () => {
       supabase.removeChannel(channel)
     }
@@ -101,22 +99,32 @@ export default function VenuesList() {
       {venues.map((venue) => (
         <div
           key={venue.id}
-          className="bg-white p-3 rounded-lg shadow-sm hover:shadow-md transition-shadow"
+          className={`bg-white p-3 rounded-lg shadow-sm hover:shadow-md transition-shadow ${
+            venue.status !== 'completed' ? 'opacity-50' : ''
+          }`}
         >
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <p className="text-gray-900 font-medium">{venue.venue_name}</p>
-              <p className="text-gray-400">
-                {venue.city_name}, {venue.country_name}
+              <p className={`font-medium ${
+                venue.status !== 'completed' ? 'text-gray-500' : 'text-gray-900'
+              }`}>
+                {venue.status !== 'completed' ? venue.url : venue.venue_name}
               </p>
+              {venue.status === 'completed' && (
+                <p className="text-gray-400">
+                  {venue.city_name}, {venue.country_name}
+                </p>
+              )}
             </div>
             <button
               onClick={() => handleDelete(venue.id)}
-              disabled={deletingId === venue.id}
+              disabled={deletingId === venue.id || venue.status !== 'completed'}
               className={`text-red-500 hover:text-red-700 transition-colors p-2 rounded-full hover:bg-red-50 ${
-                deletingId === venue.id ? 'opacity-50 cursor-not-allowed' : ''
+                (deletingId === venue.id || venue.status !== 'completed') 
+                  ? 'opacity-50 cursor-not-allowed' 
+                  : ''
               }`}
-              title="Delete venue"
+              title={venue.status !== 'completed' ? 'Processing...' : 'Delete venue'}
             >
               <FaTrash className="w-4 h-4" />
             </button>

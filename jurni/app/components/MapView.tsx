@@ -70,10 +70,18 @@ export default function MapView() {
   const [locationError, setLocationError] = useState<string | null>(null);
   const [isLocating, setIsLocating] = useState(false);
   const [lastLocationTime, setLastLocationTime] = useState<number>(0);
+  const [zoomLevel, setZoomLevel] = useState<number>(0);
   const LOCATION_CACHE_TIME = 30000; // 30 seconds
+  const MIN_ZOOM_FOR_LABELS = 10; // Minimum zoom level to show labels
 
   const onMapLoad = useCallback((map: google.maps.Map) => {
     setMap(map);
+    // Add zoom change listener
+    map.addListener('zoom_changed', () => {
+      setZoomLevel(map.getZoom() || 0);
+    });
+    // Set initial zoom level
+    setZoomLevel(map.getZoom() || 0);
   }, []);
 
   const getUserLocation = useCallback(() => {
@@ -273,13 +281,13 @@ export default function MapView() {
           <GoogleMap
             mapContainerStyle={containerStyle}
             center={mapCenter}
-            zoom={3}
+            zoom={zoomLevel}
             onLoad={onMapLoad}
             options={{
               zoomControl: true,
               streetViewControl: false,
               mapTypeControl: false,
-              fullscreenControl: false,
+              fullscreenControl: true,
               styles: [
                 {
                   featureType: "poi",
@@ -314,31 +322,6 @@ export default function MapView() {
               ]
             }}
           >
-            {waypoints.map((waypoint) => (
-              <Marker
-                key={waypoint.id}
-                position={{
-                  lat: waypoint.latitude,
-                  lng: waypoint.longitude
-                }}
-                onClick={() => setSelectedWaypoint(waypoint)}
-                label={{
-                  text: waypoint.venue_name,
-                  className: "font-bold text-sm",
-                  color: "#000000"
-                }}
-                icon={{
-                  path: google.maps.SymbolPath.CIRCLE,
-                  scale: 8,
-                  fillColor: "#4285F4",
-                  fillOpacity: 1,
-                  strokeColor: "#FFFFFF",
-                  strokeWeight: 2,
-                  labelOrigin: new google.maps.Point(0, -2)
-                }}
-              />
-            ))}
-
             {userLocation && (
               <Marker
                 position={userLocation}
@@ -347,6 +330,29 @@ export default function MapView() {
                 }}
               />
             )}
+            {waypoints.map((waypoint) => (
+              <Marker
+                key={waypoint.id}
+                position={{ lat: waypoint.latitude, lng: waypoint.longitude }}
+                onClick={() => setSelectedWaypoint(waypoint)}
+                label={zoomLevel >= MIN_ZOOM_FOR_LABELS ? {
+                  text: waypoint.venue_name,
+                  className: 'venue-label',
+                  color: '#000000',
+                  fontSize: '14px',
+                  fontWeight: 'bold',
+                } : undefined}
+                icon={{
+                  path: google.maps.SymbolPath.CIRCLE,
+                  scale: 8,
+                  fillColor: '#4285F4',
+                  fillOpacity: 1,
+                  strokeColor: '#FFFFFF',
+                  strokeWeight: 2,
+                  labelOrigin: new google.maps.Point(0, -2)
+                }}
+              />
+            ))}
 
             {selectedWaypoint && (
               <InfoWindow
