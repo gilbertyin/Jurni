@@ -371,9 +371,6 @@ export default function MapView({ selectedVenue }: MapViewProps) {
         bottom: 50, 
         left: 50 
       });
-      
-      // Set the selected waypoint to show the info window
-      setSelectedWaypoint(selectedVenue);
     }
   }, [selectedVenue, map, userLocation]);
 
