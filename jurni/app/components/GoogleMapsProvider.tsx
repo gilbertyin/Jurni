@@ -20,6 +20,7 @@ export default function GoogleMapsProvider({ children }: GoogleMapsProviderProps
     <LoadScript 
       googleMapsApiKey={process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY}
       libraries={['places']}
+      loadingElement={<div />}
     >
       {children}
     </LoadScript>
