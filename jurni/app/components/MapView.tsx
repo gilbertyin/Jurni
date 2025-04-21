@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
-import { GoogleMap, LoadScript, Marker, InfoWindow } from '@react-google-maps/api';
+import { GoogleMap, LoadScript, Marker, InfoWindow, OverlayView } from '@react-google-maps/api';
 import { createClient } from '@/lib/supabase';
 import { FaHome } from 'react-icons/fa';
 
@@ -57,6 +57,58 @@ interface Waypoint {
     };
   };
 }
+
+// Add custom marker styles
+const customMarkerStyles = `
+  .pulse-dot {
+    width: 12px;
+    height: 12px;
+    background-color: #4285F4;
+    border: 2px solid white;
+    border-radius: 50%;
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    box-shadow: 0 0 0 0 rgba(66, 133, 244, 1);
+    animation: pulse 2s infinite;
+  }
+
+  @keyframes pulse {
+    0% {
+      box-shadow: 0 0 0 0 rgba(66, 133, 244, 0.7);
+    }
+    70% {
+      box-shadow: 0 0 0 10px rgba(66, 133, 244, 0);
+    }
+    100% {
+      box-shadow: 0 0 0 0 rgba(66, 133, 244, 0);
+    }
+  }
+`;
+
+// Add styles to document
+if (typeof document !== 'undefined') {
+  const style = document.createElement('style');
+  style.textContent = customMarkerStyles;
+  document.head.appendChild(style);
+}
+
+// Custom PulsingMarker component
+const PulsingMarker = ({ position }: { position: google.maps.LatLngLiteral }) => {
+  return (
+    <OverlayView
+      position={position}
+      mapPaneName={OverlayView.OVERLAY_MOUSE_TARGET}
+      getPixelPositionOffset={(width, height) => ({
+        x: -(width / 2),
+        y: -(height / 2),
+      })}
+    >
+      <div className="pulse-dot" />
+    </OverlayView>
+  );
+};
 
 export default function MapView() {
   const [waypoints, setWaypoints] = useState<Waypoint[]>([]);
@@ -360,14 +412,7 @@ export default function MapView() {
               ]
             }}
           >
-            {userLocation && (
-              <Marker
-                position={userLocation}
-                icon={{
-                  url: 'https://maps.google.com/mapfiles/ms/icons/blue-dot.png'
-                }}
-              />
-            )}
+            {userLocation && <PulsingMarker position={userLocation} />}
             {waypoints.map((waypoint) => (
               <Marker
                 key={waypoint.id}
@@ -381,13 +426,14 @@ export default function MapView() {
                   fontWeight: 'bold',
                 } : undefined}
                 icon={{
-                  path: google.maps.SymbolPath.CIRCLE,
-                  scale: 8,
-                  fillColor: '#4285F4',
-                  fillOpacity: 1,
-                  strokeColor: '#FFFFFF',
-                  strokeWeight: 2,
-                  labelOrigin: new google.maps.Point(0, -2)
+                  url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(`
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z" fill="#4285F4"/>
+                    </svg>
+                  `),
+                  scaledSize: new google.maps.Size(24, 24),
+                  anchor: new google.maps.Point(12, 12),
+                  labelOrigin: new google.maps.Point(12, 30)
                 }}
               />
             ))}
