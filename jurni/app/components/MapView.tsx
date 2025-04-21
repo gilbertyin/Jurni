@@ -58,6 +58,10 @@ interface Waypoint {
   };
 }
 
+interface MapViewProps {
+  selectedVenue?: Waypoint | null;
+}
+
 // Add custom marker styles
 const customMarkerStyles = `
   .pulse-dot {
@@ -110,7 +114,7 @@ const PulsingMarker = ({ position }: { position: google.maps.LatLngLiteral }) =>
   );
 };
 
-export default function MapView() {
+export default function MapView({ selectedVenue }: MapViewProps) {
   const [waypoints, setWaypoints] = useState<Waypoint[]>([]);
   const [selectedWaypoint, setSelectedWaypoint] = useState<Waypoint | null>(null);
   const [mapCenter, setMapCenter] = useState(defaultCenter);
@@ -325,11 +329,22 @@ export default function MapView() {
             }
           } else if (payload.eventType === 'UPDATE') {
             const updatedVideo = payload.new as Waypoint;
-            setWaypoints(prevWaypoints => 
-              prevWaypoints.map(waypoint => 
-                waypoint.id === updatedVideo.id ? updatedVideo : waypoint
-              )
-            );
+            // Check if this is a new venue getting its coordinates
+            if (updatedVideo.latitude && updatedVideo.longitude) {
+              setWaypoints(prevWaypoints => {
+                // Check if this venue already exists in the list
+                const existingIndex = prevWaypoints.findIndex(w => w.id === updatedVideo.id);
+                if (existingIndex === -1) {
+                  // If it's a new venue with coordinates, add it to the list
+                  return [updatedVideo, ...prevWaypoints];
+                } else {
+                  // If it's an existing venue, update it
+                  return prevWaypoints.map(waypoint => 
+                    waypoint.id === updatedVideo.id ? updatedVideo : waypoint
+                  );
+                }
+              });
+            }
           }
         }
       )
@@ -339,7 +354,28 @@ export default function MapView() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, []);
+  }, [supabase]);
+
+  // Add effect to handle selected venue changes
+  useEffect(() => {
+    if (selectedVenue && map && userLocation) {
+      // Create bounds that include both the selected venue and user location
+      const bounds = new google.maps.LatLngBounds();
+      bounds.extend({ lat: selectedVenue.latitude, lng: selectedVenue.longitude });
+      bounds.extend(userLocation);
+      
+      // Set the map to show both points
+      map.fitBounds(bounds, { 
+        top: 50, 
+        right: 50, 
+        bottom: 50, 
+        left: 50 
+      });
+      
+      // Set the selected waypoint to show the info window
+      setSelectedWaypoint(selectedVenue);
+    }
+  }, [selectedVenue, map, userLocation]);
 
   if (error) {
     return (

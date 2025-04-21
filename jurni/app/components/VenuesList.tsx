@@ -11,20 +11,34 @@ interface Venue {
   country_name: string
   url: string
   status: string
+  latitude: number
+  longitude: number
 }
 
-export default function VenuesList() {
+interface VenuesListProps {
+  onVenueSelect?: (venue: Venue | null) => void;
+}
+
+export default function VenuesList({ onVenueSelect }: VenuesListProps) {
   const [venues, setVenues] = useState<Venue[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [selectedVenue, setSelectedVenue] = useState<Venue | null>(null)
   const supabase = createClient()
+
+  const handleVenueSelect = (venue: Venue) => {
+    setSelectedVenue(venue);
+    if (onVenueSelect) {
+      onVenueSelect(venue);
+    }
+  }
 
   const fetchVenues = async () => {
     try {
       const { data, error } = await supabase
         .from('videos')
-        .select('id, venue_name, city_name, country_name, url, status')
+        .select('id, venue_name, city_name, country_name, url, status, latitude, longitude')
         .order('created_at', { ascending: false })
 
       if (error) throw error
@@ -99,9 +113,10 @@ export default function VenuesList() {
       {venues.map((venue) => (
         <div
           key={venue.id}
-          className={`bg-white p-3 rounded-lg shadow-sm hover:shadow-md transition-shadow ${
+          className={`bg-white p-3 rounded-lg shadow-sm hover:shadow-md transition-shadow cursor-pointer ${
             venue.status !== 'completed' ? 'opacity-50' : ''
-          }`}
+          } ${selectedVenue?.id === venue.id ? 'ring-2 ring-blue-500' : ''}`}
+          onClick={() => venue.status === 'completed' && handleVenueSelect(venue)}
         >
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
@@ -117,7 +132,10 @@ export default function VenuesList() {
               )}
             </div>
             <button
-              onClick={() => handleDelete(venue.id)}
+              onClick={(e) => {
+                e.stopPropagation();
+                handleDelete(venue.id);
+              }}
               disabled={deletingId === venue.id || venue.status !== 'completed'}
               className={`text-red-500 hover:text-red-700 transition-colors p-2 rounded-full hover:bg-red-50 ${
                 (deletingId === venue.id || venue.status !== 'completed') 
