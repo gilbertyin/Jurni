@@ -4,4 +4,8 @@
 *.avi
 *.mkv
 *.webm
-temp/ 
+temp/
+
+# Screenshots
+public/screenshots/
+*.png 
