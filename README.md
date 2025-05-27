@@ -4,9 +4,9 @@ Jurni is a web application that analyzes videos to extract location and venue in
 
 ## Screenshots
 
-![Jurni Application Screenshot 1](public/screenshots/jurni-app-screenshot.png)
+![Jurni Application Screenshot 1](jurni/public/screenshots/jurni-app-screenshot.png)
 
-![Jurni Application Screenshot 2](public/screenshots/jurni-app-screenshot-2.png)
+![Jurni Application Screenshot 2](jurni/public/screenshots/jurni-app-screenshot-2.png)
 
 ## Features
 
