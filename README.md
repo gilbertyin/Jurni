@@ -2,6 +2,13 @@
 
 Jurni is a web application that analyzes videos to extract location and venue information, displaying them on an interactive map.
 
+## Screenshots
+
+<div style="display: flex; gap: 20px; margin: 20px 0;">
+  <img src="public/screenshots/jurni-app-screenshot.png" alt="Jurni Application Screenshot 1" style="width: 45%;">
+  <img src="public/screenshots/jurni-app-screenshot-2.png" alt="Jurni Application Screenshot 2" style="width: 45%;">
+</div>
+
 ## Features
 
 - **Video Analysis**: Submit video URLs for automated analysis

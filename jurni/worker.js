@@ -213,7 +213,7 @@ async function extractMetadata(url) {
 // Modified Gemini processing with rate limiting
 async function processWithGemini(videoPath, metadata) {
   return withRateLimit(geminiQueue, 'gemini', async () => {
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-pro" });
+    const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash-lite" });
     const videoData = fs.readFileSync(videoPath);
     
     // Create a prompt that includes both metadata and video analysis
@@ -224,15 +224,20 @@ async function processWithGemini(videoPath, metadata) {
       Title: ${metadata.title}
       Description: ${metadata.description}
       
-      Please watch the video and use the metedata to provide a JSON response with the following structure:
+      Please watch the video and use the metadata to provide a JSON response with the following structure:
       {
         "country_name": "The country name that the video is about based on visual content, title, and description. Put 'unknown' if you can't determine the country.",
         "city_name": "The city name that the video is about based on visual content, title, and description. Put 'unknown' if you can't determine the city.",
         "summary": "A short summary of the venue based on visual content, title, and description that discusseses the price, pros and cons and other important details. Make it a few sentences long and dont split into further json objects just have it be one paragraph.",
-        "venue_name": "The name of the venue based on visual content, title, and description. Put 'unknown' if you can't determine the venue name.",
+        "venue_name": "The name of the venue based on visual content, title, and description. Put 'unknown' if you can't determine the venue name."
       }
       
-      IMPORTANT: Return ONLY the JSON object, without any markdown formatting or additional text.
+      IMPORTANT: 
+      1. Return ONLY the raw JSON object
+      2. Do not include any text before or after the JSON
+      3. Do not include any markdown formatting
+      4. Do not include any explanatory text
+      5. The response should start with { and end with }
     `;
     
     try {
@@ -252,8 +257,9 @@ async function processWithGemini(videoPath, metadata) {
       
       log(`[DEBUG] Raw Gemini AI response: ${text}`);
       
-      // Clean the response by removing markdown code blocks and any surrounding text
+      // Clean the response by removing any text before and after the JSON object
       const cleanedText = text
+        .replace(/^[\s\S]*?({[\s\S]*})[\s\S]*$/, '$1')  // Extract only the JSON object
         .replace(/```json\n?/g, '')  // Remove ```json
         .replace(/```\n?/g, '')      // Remove ```
         .trim();                     // Remove any extra whitespace

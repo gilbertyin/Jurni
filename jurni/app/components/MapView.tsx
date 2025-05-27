@@ -40,21 +40,14 @@ const defaultCenter = {
 
 interface Waypoint {
   id: string;
-  title: string;
-  description: string;
-  latitude: number;
-  longitude: number;
   venue_name: string;
   city_name: string;
   country_name: string;
-  gemini_analysis: {
+  latitude: number;
+  longitude: number;
+  status: string;
+  gemini_analysis?: {
     summary: string;
-    visual_analysis?: {
-      architecture_style?: string;
-      interior_design?: string;
-      crowd_density?: string;
-      notable_features?: string[];
-    };
   };
 }
 
@@ -319,7 +312,7 @@ export default function MapView({ selectedVenue }: MapViewProps) {
   useEffect(() => {
     async function fetchWaypoints() {
       try {
-        const { data, error, count } = await supabase
+        const { data, error } = await supabase
           .from('videos')
           .select('*')
           .order('created_at', { ascending: false });
@@ -336,18 +329,19 @@ export default function MapView({ selectedVenue }: MapViewProps) {
           return;
         }
         
-        // Filter videos with valid coordinates
+        // Filter videos with valid coordinates and completed status
         const videosWithCoordinates = data.filter(video => 
           video.latitude !== null && 
-          video.longitude !== null
+          video.longitude !== null &&
+          video.status === 'completed'
         );
         
         if (videosWithCoordinates.length > 0) {
           setWaypoints(videosWithCoordinates);
-          const firstWaypoint = videosWithCoordinates[0];
+          const firstVideo = videosWithCoordinates[0];
           setMapCenter({
-            lat: firstWaypoint.latitude,
-            lng: firstWaypoint.longitude
+            lat: firstVideo.latitude,
+            lng: firstVideo.longitude
           });
         } else {
           console.log('No videos found with coordinates');
@@ -379,21 +373,17 @@ export default function MapView({ selectedVenue }: MapViewProps) {
             );
           } else if (payload.eventType === 'INSERT') {
             const newVideo = payload.new as Waypoint;
-            if (newVideo.latitude && newVideo.longitude) {
+            if (newVideo.latitude && newVideo.longitude && newVideo.status === 'completed') {
               setWaypoints(prevWaypoints => [newVideo, ...prevWaypoints]);
             }
           } else if (payload.eventType === 'UPDATE') {
             const updatedVideo = payload.new as Waypoint;
-            // Check if this is a new venue getting its coordinates
-            if (updatedVideo.latitude && updatedVideo.longitude) {
+            if (updatedVideo.latitude && updatedVideo.longitude && updatedVideo.status === 'completed') {
               setWaypoints(prevWaypoints => {
-                // Check if this venue already exists in the list
                 const existingIndex = prevWaypoints.findIndex(w => w.id === updatedVideo.id);
                 if (existingIndex === -1) {
-                  // If it's a new venue with coordinates, add it to the list
                   return [updatedVideo, ...prevWaypoints];
                 } else {
-                  // If it's an existing venue, update it
                   return prevWaypoints.map(waypoint => 
                     waypoint.id === updatedVideo.id ? updatedVideo : waypoint
                   );
@@ -405,7 +395,6 @@ export default function MapView({ selectedVenue }: MapViewProps) {
       )
       .subscribe();
 
-    // Cleanup subscription on unmount
     return () => {
       supabase.removeChannel(channel);
     };
@@ -414,6 +403,13 @@ export default function MapView({ selectedVenue }: MapViewProps) {
   // Add effect to handle selected venue changes
   useEffect(() => {
     if (selectedVenue && map && userLocation) {
+      // Validate that selectedVenue has valid coordinates
+      if (typeof selectedVenue.latitude !== 'number' || typeof selectedVenue.longitude !== 'number' || 
+          isNaN(selectedVenue.latitude) || isNaN(selectedVenue.longitude)) {
+        console.error('Invalid coordinates for selected venue:', selectedVenue);
+        return;
+      }
+
       // Create bounds that include both the selected venue and user location
       const bounds = new google.maps.LatLngBounds();
       bounds.extend({ lat: selectedVenue.latitude, lng: selectedVenue.longitude });
